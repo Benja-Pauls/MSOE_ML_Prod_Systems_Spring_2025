@@ -56,28 +56,32 @@ def run_job():
 
             for event in events:
                 try:
+                    event_id = event[0]
+                    event_date = event[1]
+                    zipcode = event[2]
+
                     cur.execute("""
                         SELECT population FROM cleaned_zipcode_populations WHERE zipcode = %s
-                    """, (event['zipcode'],))
+                    """, (zipcode,))
                     population_data = cur.fetchone()
 
                     cur.execute("""
                         SELECT high_schools, middle_schools, primary_schools, other_schools, unknown_schools, total_schools
                         FROM cleaned_zipcode_public_schools WHERE zipcode = %s
-                    """, (event['zipcode'],))
+                    """, (zipcode,))
                     school_data = cur.fetchone()
 
                     enriched_event = {
-                        'id': event['id'],
-                        'event_date': event['event_date'],
-                        'zipcode': event['zipcode'],
-                        'population': population_data['population'],
-                        'high_schools': school_data['high_schools'],
-                        'middle_schools': school_data['middle_schools'],
-                        'primary_schools': school_data['primary_schools'],
-                        'other_schools': school_data['other_schools'],
-                        'unknown_schools': school_data['unknown_schools'],
-                        'total_schools': school_data['total_schools']
+                        'id': event_id,
+                        'event_date': event_date,
+                        'zipcode': zipcode,
+                        'population': population_data[0],
+                        'high_schools': school_data[0],
+                        'middle_schools': school_data[1],
+                        'primary_schools': school_data[2],
+                        'other_schools': school_data[3],
+                        'unknown_schools': school_data[4],
+                        'total_schools': school_data[5]
                     }
 
                     schema = HomeSaleEventSchema()
@@ -88,17 +92,16 @@ def run_job():
                         VALUES (%(id)s, %(event_date)s, %(zipcode)s, %(population)s, %(high_schools)s, %(middle_schools)s, %(primary_schools)s, %(other_schools)s, %(unknown_schools)s, %(total_schools)s);
                     """, validated_event)
 
-                    cur.execute("INSERT INTO processed_event_ids (id) VALUES (%s);", (event['id'],))
-
+                    cur.execute("INSERT INTO processed_event_ids (id) VALUES (%s);", (event_id,))
                     conn.commit()
 
                 except ValidationError as e:
-                    print(f"Validation error for event {event['id']}: {e}")
-                    cur.execute("INSERT INTO processed_event_ids (id) VALUES (%s);", (event['id'],))
+                    print(f"Validation error for event {event_id}: {e}")
+                    cur.execute("INSERT INTO processed_event_ids (id) VALUES (%s);", (event_id,))
                     conn.commit()
 
                 except Exception as e:
-                    print(f"Error processing event {event['id']}: {e}")
+                    print(f"Error processing event {event_id}: {e}")
                     conn.rollback()
 
 if __name__ == "__main__":
