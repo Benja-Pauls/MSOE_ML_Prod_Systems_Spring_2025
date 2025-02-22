@@ -5,8 +5,7 @@ from marshmallow import Schema, fields, pre_load, validates, ValidationError
 # Define the schema using marshmallow
 class HomeSaleEventSchema(Schema):
     id = fields.Integer(required=True)
-    # The cleaned_home_sale_events table has a "date" column, not "event_date"
-    date = fields.Date(required=True)
+    date = fields.Date(required=True)  # corresponds to "date" column in cleaned_home_sale_events
     zipcode = fields.String(required=True)
     population = fields.Integer(required=True)
     high_schools = fields.Integer(required=True)
@@ -47,11 +46,9 @@ def run_job():
     host = os.getenv('DB_HOST')
     conn_string = f"postgresql://{user}:{password}@{host}:5432/house_price_prediction_service"
 
-    # Connect using psycopg (psycopg3)
     with psycopg.connect(conn_string) as conn:
-        # Open a cursor
         with conn.cursor() as cur:
-            # 1. Fetch unprocessed events
+            # 1. Fetch unprocessed events as tuples
             cur.execute("""
                 SELECT
                   id,
@@ -65,7 +62,7 @@ def run_job():
             events = cur.fetchall()  # list of tuples
 
             for event in events:
-                # event is a tuple like (id, event_date, zipcode_string)
+                # event is a tuple: (id, event_date, zipcode_string)
                 event_id = event[0]
                 raw_event_date = event[1]
                 raw_zipcode = event[2]
@@ -98,11 +95,10 @@ def run_job():
                     if school_data is None:
                         raise ValidationError(f"No school data for zipcode: {raw_zipcode}")
 
-                    # 4. Build enriched dict
+                    # 4. Build the enriched dict to feed into Marshmallow
                     enriched_event = {
                         'id': event_id,
-                        # The Marshmallow schema expects "date", not "event_date"
-                        'date': raw_event_date,
+                        'date': raw_event_date,  # matches your Marshmallow "date" field
                         'zipcode': raw_zipcode,
                         'population': population_data[0],
                         'high_schools': school_data[0],
@@ -149,7 +145,6 @@ def run_job():
 
                 except Exception as e:
                     print(f"Error processing event {event_id}: {e}")
-                    # Roll back this record’s transaction so partial insert doesn't hang around
                     conn.rollback()
 
 if __name__ == "__main__":
