@@ -5,7 +5,7 @@ from marshmallow import Schema, fields, pre_load, validates, ValidationError
 # Define the schema using marshmallow
 class HomeSaleEventSchema(Schema):
     id = fields.Integer(required=True)
-    date = fields.Date(required=True)  # corresponds to "date" column in cleaned_home_sale_events
+    event_date = fields.Date(required=True) 
     zipcode = fields.String(required=True)
     population = fields.Integer(required=True)
     high_schools = fields.Integer(required=True)
