@@ -5,7 +5,8 @@ from marshmallow import Schema, fields, pre_load, validates, ValidationError
 # Define the schema using marshmallow
 class HomeSaleEventSchema(Schema):
     id = fields.Integer(required=True)
-    event_date = fields.Date(required=True)
+    # The cleaned_home_sale_events table has a "date" column, not "event_date"
+    date = fields.Date(required=True)
     zipcode = fields.String(required=True)
     population = fields.Integer(required=True)
     high_schools = fields.Integer(required=True)
@@ -17,7 +18,9 @@ class HomeSaleEventSchema(Schema):
 
     @pre_load
     def preprocess(self, data, **kwargs):
+        # Ensure we always have a 5-character zip, e.g. "00501"
         data['zipcode'] = data.get('zipcode', '').strip().zfill(5)
+        # Convert school and population fields to int
         data['population'] = int(data.get('population', 0))
         data['high_schools'] = int(data.get('high_schools', 0))
         data['middle_schools'] = int(data.get('middle_schools', 0))
@@ -44,38 +47,63 @@ def run_job():
     host = os.getenv('DB_HOST')
     conn_string = f"postgresql://{user}:{password}@{host}:5432/house_price_prediction_service"
 
+    # Connect using psycopg (psycopg3)
     with psycopg.connect(conn_string) as conn:
+        # Open a cursor
         with conn.cursor() as cur:
+            # 1. Fetch unprocessed events
             cur.execute("""
-                SELECT id, event_date, data->>'zipcode' AS zipcode FROM raw_home_sale_events
+                SELECT
+                  id,
+                  event_date,
+                  data ->> 'zipcode' AS zipcode
+                FROM raw_home_sale_events
                 WHERE id NOT IN (SELECT id FROM processed_event_ids)
                 ORDER BY event_date DESC
                 LIMIT 100;
             """)
-            events = cur.fetchall()
+            events = cur.fetchall()  # list of tuples
 
             for event in events:
-                try:
-                    # Access elements by index
-                    event_id = event[0]
-                    event_date = event[1]
-                    zipcode = event[2]
+                # event is a tuple like (id, event_date, zipcode_string)
+                event_id = event[0]
+                raw_event_date = event[1]
+                raw_zipcode = event[2]
 
+                try:
+                    # 2. Query population data
                     cur.execute("""
-                        SELECT population FROM cleaned_zipcode_populations WHERE zipcode = %s
-                    """, (zipcode,))
+                        SELECT population
+                        FROM cleaned_zipcode_populations
+                        WHERE zipcode = %s
+                    """, (raw_zipcode,))
                     population_data = cur.fetchone()
 
+                    # 3. Query school data
                     cur.execute("""
-                        SELECT high_schools, middle_schools, primary_schools, other_schools, unknown_schools, total_schools
-                        FROM cleaned_zipcode_public_schools WHERE zipcode = %s
-                    """, (zipcode,))
+                        SELECT high_schools,
+                               middle_schools,
+                               primary_schools,
+                               other_schools,
+                               unknown_schools,
+                               total_schools
+                        FROM cleaned_zipcode_public_schools
+                        WHERE zipcode = %s
+                    """, (raw_zipcode,))
                     school_data = cur.fetchone()
 
+                    # If there's no matching row in population or school data, handle it
+                    if population_data is None:
+                        raise ValidationError(f"No population data for zipcode: {raw_zipcode}")
+                    if school_data is None:
+                        raise ValidationError(f"No school data for zipcode: {raw_zipcode}")
+
+                    # 4. Build enriched dict
                     enriched_event = {
                         'id': event_id,
-                        'event_date': event_date,
-                        'zipcode': zipcode,
+                        # The Marshmallow schema expects "date", not "event_date"
+                        'date': raw_event_date,
+                        'zipcode': raw_zipcode,
                         'population': population_data[0],
                         'high_schools': school_data[0],
                         'middle_schools': school_data[1],
@@ -85,25 +113,43 @@ def run_job():
                         'total_schools': school_data[5]
                     }
 
-                    # Validate and insert the enriched event
+                    # 5. Validate with Marshmallow
                     schema = HomeSaleEventSchema()
                     validated_event = schema.load(enriched_event)
 
+                    # 6. Insert into cleaned_home_sale_events
                     cur.execute("""
-                        INSERT INTO cleaned_home_sale_events (id, event_date, zipcode, population, high_schools, middle_schools, primary_schools, other_schools, unknown_schools, total_schools)
-                        VALUES (%(id)s, %(event_date)s, %(zipcode)s, %(population)s, %(high_schools)s, %(middle_schools)s, %(primary_schools)s, %(other_schools)s, %(unknown_schools)s, %(total_schools)s);
+                        INSERT INTO cleaned_home_sale_events
+                        (id, date, zipcode, population,
+                         high_schools, middle_schools, primary_schools,
+                         other_schools, unknown_schools, total_schools)
+                        VALUES (
+                          %(id)s,
+                          %(date)s,
+                          %(zipcode)s,
+                          %(population)s,
+                          %(high_schools)s,
+                          %(middle_schools)s,
+                          %(primary_schools)s,
+                          %(other_schools)s,
+                          %(unknown_schools)s,
+                          %(total_schools)s
+                        );
                     """, validated_event)
 
+                    # 7. Mark event as processed
                     cur.execute("INSERT INTO processed_event_ids (id) VALUES (%s);", (event_id,))
                     conn.commit()
 
                 except ValidationError as e:
                     print(f"Validation error for event {event_id}: {e}")
+                    # Even if the row is invalid, mark it processed so we don’t retry next time
                     cur.execute("INSERT INTO processed_event_ids (id) VALUES (%s);", (event_id,))
                     conn.commit()
 
                 except Exception as e:
                     print(f"Error processing event {event_id}: {e}")
+                    # Roll back this record’s transaction so partial insert doesn't hang around
                     conn.rollback()
 
 if __name__ == "__main__":
