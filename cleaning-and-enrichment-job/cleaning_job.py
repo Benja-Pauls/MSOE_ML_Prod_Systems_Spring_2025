@@ -56,6 +56,7 @@ def run_job():
 
             for event in events:
                 try:
+                    # Access elements by index
                     event_id = event[0]
                     event_date = event[1]
                     zipcode = event[2]
@@ -84,6 +85,7 @@ def run_job():
                         'total_schools': school_data[5]
                     }
 
+                    # Validate and insert the enriched event
                     schema = HomeSaleEventSchema()
                     validated_event = schema.load(enriched_event)
 
