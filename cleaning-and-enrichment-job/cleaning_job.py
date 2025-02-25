@@ -7,6 +7,23 @@ class HomeSaleEventSchema(Schema):
     id = fields.Integer(required=True)
     event_date = fields.DateTime(required=True)
     zipcode = fields.String(required=True)
+    lat = fields.Float(required=True)
+    long = fields.Float(required=True)
+    price = fields.Float(allow_none=True)
+    bedrooms = fields.Integer(allow_none=True)
+    bathrooms = fields.Float(allow_none=True)
+    sqft_living = fields.Integer(allow_none=True)
+    sqft_lot = fields.Integer(allow_none=True)
+    floors = fields.Float(allow_none=True)
+    waterfront = fields.Integer(allow_none=True)
+    view = fields.Integer(allow_none=True)
+    condition = fields.Integer(allow_none=True)
+    grade = fields.Integer(allow_none=True)
+    sqft_above = fields.Integer(allow_none=True)
+    sqft_basement = fields.Integer(allow_none=True)
+    yr_built = fields.Integer(allow_none=True)
+    yr_renovated = fields.Integer(allow_none=True)
+    sqft_living15 = fields.Integer(allow_none=True)
     population = fields.Integer(required=True)
     high_schools = fields.Integer(required=True)
     middle_schools = fields.Integer(required=True)
@@ -63,7 +80,17 @@ def run_job():
         with conn.cursor() as cur:
             print("Connected successfully. Querying for unprocessed events...")
             cur.execute("""
-                SELECT id, event_date::text, data->>'zipcode' AS zipcode FROM raw_home_sale_events
+                SELECT id, event_date::text, data->>'zipcode' AS zipcode,
+                       data->>'lat' AS lat, data->>'long' AS long,
+                       data->>'price' AS price, data->>'bedrooms' AS bedrooms,
+                       data->>'bathrooms' AS bathrooms, data->>'sqft_living' AS sqft_living,
+                       data->>'sqft_lot' AS sqft_lot, data->>'floors' AS floors,
+                       data->>'waterfront' AS waterfront, data->>'view' AS view,
+                       data->>'condition' AS condition, data->>'grade' AS grade,
+                       data->>'sqft_above' AS sqft_above, data->>'sqft_basement' AS sqft_basement,
+                       data->>'yr_built' AS yr_built, data->>'yr_renovated' AS yr_renovated,
+                       data->>'sqft_living15' AS sqft_living15
+                FROM raw_home_sale_events
                 WHERE id NOT IN (SELECT id FROM processed_event_ids)
                 ORDER BY event_date DESC
                 LIMIT 100;
@@ -74,8 +101,26 @@ def run_job():
             for event in events:
                 try:
                     event_id = event[0]
-                    event_date = event[1]  # Now a string in YYYY-MM-DD format
+                    event_date = event[1]
                     zipcode = event[2]
+                    lat = float(event[3])
+                    long = float(event[4])
+                    price = float(event[5]) if event[5] else None
+                    bedrooms = int(event[6]) if event[6] else None
+                    bathrooms = float(event[7]) if event[7] else None
+                    sqft_living = int(event[8]) if event[8] else None
+                    sqft_lot = int(event[9]) if event[9] else None
+                    floors = float(event[10]) if event[10] else None
+                    waterfront = int(event[11]) if event[11] else None
+                    view = int(event[12]) if event[12] else None
+                    condition = int(event[13]) if event[13] else None
+                    grade = int(event[14]) if event[14] else None
+                    sqft_above = int(event[15]) if event[15] else None
+                    sqft_basement = int(event[16]) if event[16] else None
+                    yr_built = int(event[17]) if event[17] else None
+                    yr_renovated = int(event[18]) if event[18] else None
+                    sqft_living15 = int(event[19]) if event[19] else None
+
                     print(f"\nProcessing event ID: {event_id}, Date: {event_date}, Zipcode: {zipcode}")
 
                     print(f"Querying population data for zipcode {zipcode}")
@@ -100,8 +145,25 @@ def run_job():
                     print("Creating enriched event...")
                     enriched_event = {
                         'id': event_id,
-                        'event_date': event_date,  # This will now be properly handled by the schema
+                        'event_date': event_date,
                         'zipcode': zipcode,
+                        'lat': lat,
+                        'long': long,
+                        'price': price,
+                        'bedrooms': bedrooms,
+                        'bathrooms': bathrooms,
+                        'sqft_living': sqft_living,
+                        'sqft_lot': sqft_lot,
+                        'floors': floors,
+                        'waterfront': waterfront,
+                        'view': view,
+                        'condition': condition,
+                        'grade': grade,
+                        'sqft_above': sqft_above,
+                        'sqft_basement': sqft_basement,
+                        'yr_built': yr_built,
+                        'yr_renovated': yr_renovated,
+                        'sqft_living15': sqft_living15,
                         'population': population_data[0],
                         'high_schools': school_data[0],
                         'middle_schools': school_data[1],
@@ -117,8 +179,22 @@ def run_job():
 
                     print("Inserting into cleaned_home_sale_events...")
                     cur.execute("""
-                        INSERT INTO cleaned_home_sale_events (id, date, zipcode, population, high_schools, middle_schools, primary_schools, other_schools, unknown_schools, total_schools)
-                        VALUES (%(id)s, %(event_date)s, %(zipcode)s, %(population)s, %(high_schools)s, %(middle_schools)s, %(primary_schools)s, %(other_schools)s, %(unknown_schools)s, %(total_schools)s);
+                        INSERT INTO cleaned_home_sale_events (
+                            id, date, zipcode, lat, long, price, bedrooms, bathrooms,
+                            sqft_living, sqft_lot, floors, waterfront, view, condition,
+                            grade, sqft_above, sqft_basement, yr_built, yr_renovated,
+                            sqft_living15, population, high_schools, middle_schools,
+                            primary_schools, other_schools, unknown_schools, total_schools
+                        ) VALUES (
+                            %(id)s, %(event_date)s, %(zipcode)s, %(lat)s, %(long)s,
+                            %(price)s, %(bedrooms)s, %(bathrooms)s, %(sqft_living)s,
+                            %(sqft_lot)s, %(floors)s, %(waterfront)s, %(view)s,
+                            %(condition)s, %(grade)s, %(sqft_above)s, %(sqft_basement)s,
+                            %(yr_built)s, %(yr_renovated)s, %(sqft_living15)s,
+                            %(population)s, %(high_schools)s, %(middle_schools)s,
+                            %(primary_schools)s, %(other_schools)s, %(unknown_schools)s,
+                            %(total_schools)s
+                        );
                     """, validated_event)
 
                     print("Marking event as processed...")
