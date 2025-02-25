@@ -42,13 +42,16 @@ def check_environment():
             raise EnvironmentError(f"Environment variable {var} is not set.")
 
 def run_job():
+    print("\n=== Starting new cleaning job run ===")
     user = os.getenv('DB_USER')
     password = os.getenv('DB_PASSWORD')
     host = os.getenv('DB_HOST')
     conn_string = f"postgresql://{user}:{password}@{host}:5432/house_price_prediction_service"
-
+    
+    print(f"Attempting database connection to {host}...")
     with psycopg.connect(conn_string) as conn:
         with conn.cursor() as cur:
+            print("Connected successfully. Querying for unprocessed events...")
             cur.execute("""
                 SELECT id, event_date, data->>'zipcode' AS zipcode FROM raw_home_sale_events
                 WHERE id NOT IN (SELECT id FROM processed_event_ids)
@@ -56,24 +59,35 @@ def run_job():
                 LIMIT 100;
             """)
             events = cur.fetchall()
+            print(f"Found {len(events)} unprocessed events")
 
             for event in events:
                 try:
                     event_id = event[0]
                     event_date = event[1]
                     zipcode = event[2]
+                    print(f"\nProcessing event ID: {event_id}, Date: {event_date}, Zipcode: {zipcode}")
 
+                    print(f"Querying population data for zipcode {zipcode}")
                     cur.execute("""
                         SELECT population FROM cleaned_zipcode_populations WHERE zipcode = %s
                     """, (zipcode,))
                     population_data = cur.fetchone()
+                    if not population_data:
+                        print(f"Warning: No population data found for zipcode {zipcode}")
+                        continue
 
+                    print(f"Querying school data for zipcode {zipcode}")
                     cur.execute("""
                         SELECT high_schools, middle_schools, primary_schools, other_schools, unknown_schools, total_schools
                         FROM cleaned_zipcode_public_schools WHERE zipcode = %s
                     """, (zipcode,))
                     school_data = cur.fetchone()
+                    if not school_data:
+                        print(f"Warning: No school data found for zipcode {zipcode}")
+                        continue
 
+                    print("Creating enriched event...")
                     enriched_event = {
                         'id': event_id,
                         'event_date': event_date,
@@ -87,16 +101,20 @@ def run_job():
                         'total_schools': school_data[5]
                     }
 
+                    print("Validating event data...")
                     schema = HomeSaleEventSchema()
                     validated_event = schema.load(enriched_event)
 
+                    print("Inserting into cleaned_home_sale_events...")
                     cur.execute("""
                         INSERT INTO cleaned_home_sale_events (id, event_date, zipcode, population, high_schools, middle_schools, primary_schools, other_schools, unknown_schools, total_schools)
                         VALUES (%(id)s, %(event_date)s, %(zipcode)s, %(population)s, %(high_schools)s, %(middle_schools)s, %(primary_schools)s, %(other_schools)s, %(unknown_schools)s, %(total_schools)s);
                     """, validated_event)
 
+                    print("Marking event as processed...")
                     cur.execute("INSERT INTO processed_event_ids (id) VALUES (%s);", (event_id,))
                     conn.commit()
+                    print(f"Successfully processed event {event_id}")
 
                 except ValidationError as e:
                     print(f"Validation error for event {event_id}: {e}")
@@ -106,6 +124,8 @@ def run_job():
                 except Exception as e:
                     print(f"Error processing event {event_id}: {e}")
                     conn.rollback()
+
+    print("\n=== Cleaning job run completed ===\n")
 
 if __name__ == "__main__":
     check_environment()
