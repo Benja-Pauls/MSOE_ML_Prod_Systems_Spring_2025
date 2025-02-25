@@ -63,7 +63,7 @@ def run_job():
         with conn.cursor() as cur:
             print("Connected successfully. Querying for unprocessed events...")
             cur.execute("""
-                SELECT id, event_date, data->>'zipcode' AS zipcode FROM raw_home_sale_events
+                SELECT id, event_date::text, data->>'zipcode' AS zipcode FROM raw_home_sale_events
                 WHERE id NOT IN (SELECT id FROM processed_event_ids)
                 ORDER BY event_date DESC
                 LIMIT 100;
@@ -74,7 +74,7 @@ def run_job():
             for event in events:
                 try:
                     event_id = event[0]
-                    event_date = event[1]
+                    event_date = event[1]  # Now a string in YYYY-MM-DD format
                     zipcode = event[2]
                     print(f"\nProcessing event ID: {event_id}, Date: {event_date}, Zipcode: {zipcode}")
 
@@ -100,7 +100,7 @@ def run_job():
                     print("Creating enriched event...")
                     enriched_event = {
                         'id': event_id,
-                        'event_date': event_date,
+                        'event_date': event_date,  # This will now be properly handled by the schema
                         'zipcode': zipcode,
                         'population': population_data[0],
                         'high_schools': school_data[0],
