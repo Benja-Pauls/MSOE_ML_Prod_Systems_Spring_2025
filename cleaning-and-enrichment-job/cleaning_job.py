@@ -117,7 +117,7 @@ def run_job():
 
                     print("Inserting into cleaned_home_sale_events...")
                     cur.execute("""
-                        INSERT INTO cleaned_home_sale_events (id, event_date, zipcode, population, high_schools, middle_schools, primary_schools, other_schools, unknown_schools, total_schools)
+                        INSERT INTO cleaned_home_sale_events (id, date, zipcode, population, high_schools, middle_schools, primary_schools, other_schools, unknown_schools, total_schools)
                         VALUES (%(id)s, %(event_date)s, %(zipcode)s, %(population)s, %(high_schools)s, %(middle_schools)s, %(primary_schools)s, %(other_schools)s, %(unknown_schools)s, %(total_schools)s);
                     """, validated_event)
 
