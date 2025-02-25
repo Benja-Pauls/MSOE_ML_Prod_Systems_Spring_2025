@@ -5,7 +5,7 @@ from marshmallow import Schema, fields, pre_load, validates, ValidationError
 # Define the schema using marshmallow
 class HomeSaleEventSchema(Schema):
     id = fields.Integer(required=True)
-    event_date = fields.Date(required=True) 
+    event_date = fields.DateTime(required=True)
     zipcode = fields.String(required=True)
     population = fields.Integer(required=True)
     high_schools = fields.Integer(required=True)
@@ -17,8 +17,18 @@ class HomeSaleEventSchema(Schema):
 
     @pre_load
     def preprocess(self, data, **kwargs):
-        # Ensure we always have a 5-character zip
+        # Convert event_date to proper format if it's not already
+        if isinstance(data.get('event_date'), str):
+            from datetime import datetime
+            try:
+                # Parse the date string to a datetime object
+                date_obj = datetime.strptime(data['event_date'], '%Y-%m-%d')
+                # Convert back to string in ISO format
+                data['event_date'] = date_obj.isoformat()
+            except ValueError:
+                pass  # Let the schema validation handle invalid dates
 
+        # Ensure we always have a 5-character zip
         data['zipcode'] = data.get('zipcode', '').strip().zfill(5)
         # Convert school and population fields to int
         data['population'] = int(data.get('population', 0))
