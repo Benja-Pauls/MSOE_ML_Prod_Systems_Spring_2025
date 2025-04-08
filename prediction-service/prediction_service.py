@@ -169,6 +169,8 @@ def predict_home_value():
         
         # Prepare data for model pipeline - matching the expected format
         property_dict = {
+            # Add the unnamed column that the model expects
+            'Unnamed: 0': 0,
             'date': validated_data['sale_date'],
             'price': 0,  # This will be predicted, but some models expect it in the input
             'bedrooms': validated_data['bedrooms'],
