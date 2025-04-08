@@ -168,7 +168,6 @@ def predict_home_value():
             return jsonify({"error": f"No enrichment data found for zipcode {zipcode}"}), 400
         
         # Prepare data for model pipeline - matching the expected format
-        # Rename sale_date to date for model compatibility
         property_dict = {
             'date': validated_data['sale_date'],
             'price': 0,  # This will be predicted, but some models expect it in the input
@@ -188,8 +187,8 @@ def predict_home_value():
             'zipcode': validated_data['zipcode'],
             'lat': validated_data['latitude'],
             'long': validated_data['longitude'],
-            'sqft_living15': validated_data.get('sqft_living15', validated_data['sqft_living']),
-            'sqft_lot15': validated_data.get('sqft_lot15', validated_data['sqft_lot']),
+            'sqft_living15': int(validated_data.get('sqft_living15', validated_data['sqft_living'])),
+            'sqft_lot15': int(validated_data.get('sqft_lot15', validated_data['sqft_lot'])),
         }
         
         # Add enrichment data
@@ -197,6 +196,14 @@ def predict_home_value():
         
         # Create DataFrame with the single record
         df = pd.DataFrame([property_dict])
+        
+        # Ensure date is datetime and numeric fields are correct types
+        df['date'] = pd.to_datetime(df['date'])
+        df['sqft_living15'] = df['sqft_living15'].astype(int)
+        df['sqft_lot15'] = df['sqft_lot15'].astype(int)
+
+        # Log the corrected data types
+        logger.info(f"Corrected DataFrame data types: {df.dtypes}")
         
         # Make prediction using the model pipeline
         try:
