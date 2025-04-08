@@ -162,10 +162,17 @@ def predict_home_value():
         df = pd.DataFrame([full_data])
         
         # Make prediction using the model pipeline
-        predicted_price = model_pipeline.predict(df)[0]
-        
-        # Return the prediction
-        return jsonify({"predicted_price": float(predicted_price)}), 200
+        try:
+            logger.info("About to make prediction with model pipeline")
+            predicted_price = model_pipeline.predict(df)[0]
+            logger.info(f"Prediction successful: {predicted_price}")
+            # Return the prediction
+            return jsonify({"predicted_price": float(predicted_price)}), 200
+        except Exception as e:
+            logger.error(f"Error during model prediction: {e}")
+            logger.error(traceback.format_exc())
+            # Return a special error for model prediction issues
+            return jsonify({"error": f"Model prediction error: {str(e)}"}), 500
         
     except Exception as e:
         logger.error(f"Error making prediction: {e}")
