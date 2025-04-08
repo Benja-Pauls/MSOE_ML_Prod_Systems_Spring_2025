@@ -3,11 +3,13 @@ import os
 import dill
 import pandas as pd
 import psycopg
+import numpy as np
+import traceback
+import logging
 from psycopg.rows import dict_row
 from flask import Flask, request, jsonify
 from marshmallow import Schema, fields, validates, ValidationError, pre_load, post_load, EXCLUDE
-import logging
-import traceback
+from sklearn.base import BaseEstimator, TransformerMixin
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -38,12 +40,15 @@ class PropertySchema(Schema):
     sqft_basement = fields.Integer(missing=0)
     sqft_living15 = fields.Integer(missing=None)
     sqft_lot15 = fields.Integer(missing=None)
-    year_built = fields.Integer(missing=None)
-    year_renovated = fields.Integer(missing=None, allow_none=True)
+    year_built = fields.Integer(missing=1990)
+    year_renovated = fields.Integer(missing=0, allow_none=True)
     floors = fields.Float(missing=1.0)
     waterfront = fields.Boolean(missing=False)
     bedrooms = fields.Integer(missing=3)
     bathrooms = fields.Float(missing=2.0)
+    view = fields.Integer(missing=0)
+    condition = fields.Integer(missing=3)
+    grade = fields.Integer(missing=7)
 
     # Validate numeric fields
     @validates('sqft_living')
@@ -83,6 +88,11 @@ class PropertySchema(Schema):
                 data['waterfront'] = data['waterfront'].lower() in ['true', 'yes', '1']
         
         return data
+
+# Custom health check endpoint
+@app.route('/health', methods=['GET'])
+def health_check():
+    return jsonify({"status": "ok"}), 200
 
 # Helper function to get enrichment data from PostgreSQL
 def get_enrichment_data(zipcode):
@@ -146,6 +156,7 @@ def predict_home_value():
             schema = PropertySchema()
             validated_data = schema.load(property_data)
         except ValidationError as err:
+            logger.error(f"Validation error: {err.messages}")
             return jsonify({"error": f"Validation error: {err.messages}"}), 400
         
         # Get zipcode and query enrichment data
@@ -153,41 +164,66 @@ def predict_home_value():
         enrichment_data = get_enrichment_data(zipcode)
         
         if not enrichment_data:
+            logger.error(f"No enrichment data found for zipcode {zipcode}")
             return jsonify({"error": f"No enrichment data found for zipcode {zipcode}"}), 400
         
-        # Combine property and enrichment data
-        full_data = {**validated_data, **enrichment_data}
+        # Prepare data for model pipeline - matching the expected format
+        # Rename sale_date to date for model compatibility
+        property_dict = {
+            'date': validated_data['sale_date'],
+            'price': 0,  # This will be predicted, but some models expect it in the input
+            'bedrooms': validated_data['bedrooms'],
+            'bathrooms': validated_data['bathrooms'],
+            'sqft_living': validated_data['sqft_living'],
+            'sqft_lot': validated_data['sqft_lot'],
+            'floors': validated_data['floors'],
+            'waterfront': 1 if validated_data['waterfront'] else 0,
+            'view': validated_data.get('view', 0),
+            'condition': validated_data.get('condition', 3),
+            'grade': validated_data.get('grade', 7),
+            'sqft_above': validated_data['sqft_above'],
+            'sqft_basement': validated_data.get('sqft_basement', 0),
+            'yr_built': validated_data['year_built'],
+            'yr_renovated': validated_data.get('year_renovated', 0) or 0,
+            'zipcode': validated_data['zipcode'],
+            'lat': validated_data['latitude'],
+            'long': validated_data['longitude'],
+            'sqft_living15': validated_data.get('sqft_living15', validated_data['sqft_living']),
+            'sqft_lot15': validated_data.get('sqft_lot15', validated_data['sqft_lot']),
+        }
+        
+        # Add enrichment data
+        property_dict.update(enrichment_data)
         
         # Create DataFrame with the single record
-        df = pd.DataFrame([full_data])
+        df = pd.DataFrame([property_dict])
         
         # Make prediction using the model pipeline
         try:
             logger.info("About to make prediction with model pipeline")
             logger.info(f"DataFrame columns: {df.columns.tolist()}")
             logger.info(f"DataFrame data types: {df.dtypes}")
-            logger.info(f"DataFrame has null values: {df.isnull().sum().sum() > 0}")
             
-            # TEMPORARY: Return a fixed price instead of using the model
-            predicted_price = 450000.0
-            logger.info(f"Prediction successful (fixed value): {predicted_price}")
+            # Make prediction - this outputs log-transformed price
+            log_predicted_price = model_pipeline.predict(df)[0]
+            
+            # Convert back from log scale
+            predicted_price = np.expm1(log_predicted_price)
+            
+            logger.info(f"Log predicted price: {log_predicted_price}")
+            logger.info(f"Predicted price (actual): ${predicted_price:.2f}")
             
             # Return the prediction
             return jsonify({"predicted_price": float(predicted_price)}), 200
         except Exception as e:
             logger.error(f"Error during model prediction: {e}")
             logger.error(traceback.format_exc())
-            # Return a special error for model prediction issues
             return jsonify({"error": f"Model prediction error: {str(e)}"}), 500
-        
+            
     except Exception as e:
         logger.error(f"Error making prediction: {e}")
         logger.error(traceback.format_exc())
         return jsonify({"error": f"Error making prediction: {str(e)}"}), 500
-
-@app.route('/health', methods=['GET'])
-def health_check():
-    return jsonify({"status": "ok"}), 200
 
 def check_environment():
     """Check that required environment variables are set"""
@@ -232,13 +268,6 @@ def main():
     
     # Start the Flask app
     app.run(host=args.host, port=args.port, debug=False)
-
-# Set up error handling
-@app.errorhandler(Exception)
-def handle_exception(e):
-    logger.error(f"Unhandled exception: {str(e)}")
-    logger.error(traceback.format_exc())
-    return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 if __name__ == '__main__':
     main()
