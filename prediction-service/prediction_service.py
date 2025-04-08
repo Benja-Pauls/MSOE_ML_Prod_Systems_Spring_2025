@@ -87,25 +87,29 @@ class PropertySchema(Schema):
 # Helper function to get enrichment data from PostgreSQL
 def get_enrichment_data(zipcode):
     try:
+        logger.info(f"Getting enrichment data for zipcode {zipcode}")
+        logger.info(f"Connection string: {db_connection_string}")
+        
         with psycopg.connect(db_connection_string, row_factory=dict_row) as conn:
             with conn.cursor() as cur:
                 # Query population data
-                cur.execute(
-                    "SELECT population FROM cleaned_zipcode_populations WHERE zipcode = %s",
-                    (zipcode,)
-                )
+                query = "SELECT population FROM cleaned_zipcode_populations WHERE zipcode = %s"
+                logger.info(f"Running query: {query} with zipcode: {zipcode}")
+                cur.execute(query, (zipcode,))
                 population_result = cur.fetchone()
+                logger.info(f"Population result: {population_result}")
                 
                 # Query public schools data
-                cur.execute(
-                    """SELECT high_schools, middle_schools, primary_schools, 
+                query = """SELECT high_schools, middle_schools, primary_schools, 
                        other_schools, unknown_schools, total_schools 
-                       FROM cleaned_zipcode_public_schools WHERE zipcode = %s""",
-                    (zipcode,)
-                )
+                       FROM cleaned_zipcode_public_schools WHERE zipcode = %s"""
+                logger.info(f"Running query: {query} with zipcode: {zipcode}")
+                cur.execute(query, (zipcode,))
                 schools_result = cur.fetchone()
+                logger.info(f"Schools result: {schools_result}")
                 
                 if not population_result or not schools_result:
+                    logger.error(f"No enrichment data found for zipcode {zipcode}")
                     return None
                 
                 # Combine population and schools data
@@ -113,10 +117,12 @@ def get_enrichment_data(zipcode):
                     'population': population_result['population']
                 }
                 enrichment_data.update(schools_result)
+                logger.info(f"Final enrichment data: {enrichment_data}")
                 
                 return enrichment_data
     except Exception as e:
-        app.logger.error(f"Database error: {e}")
+        logger.error(f"Database error: {e}")
+        logger.error(traceback.format_exc())
         return None
 
 # Main prediction endpoint
@@ -165,6 +171,10 @@ def predict_home_value():
         logger.error(f"Error making prediction: {e}")
         logger.error(traceback.format_exc())
         return jsonify({"error": f"Error making prediction: {str(e)}"}), 500
+
+@app.route('/health', methods=['GET'])
+def health_check():
+    return jsonify({"status": "ok"}), 200
 
 def check_environment():
     """Check that required environment variables are set"""
