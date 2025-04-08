@@ -6,6 +6,12 @@ import psycopg
 from psycopg.rows import dict_row
 from flask import Flask, request, jsonify
 from marshmallow import Schema, fields, validates, ValidationError, pre_load, post_load, EXCLUDE
+import logging
+import traceback
+
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 # Create Flask app
 app = Flask(__name__)
@@ -117,13 +123,17 @@ def get_enrichment_data(zipcode):
 @app.route('/predicted-home-value', methods=['POST'])
 def predict_home_value():
     try:
+        logger.info("Received prediction request")
         # Get request data
         request_data = request.get_json()
+        logger.debug(f"Request data: {request_data}")
         
         if not request_data or 'property' not in request_data:
+            logger.error("Invalid request format - missing 'property' field")
             return jsonify({"error": "Invalid request format. 'property' field is required."}), 400
         
         property_data = request_data['property']
+        logger.debug(f"Property data: {property_data}")
         
         # Validate and deserialize using Marshmallow
         try:
@@ -152,7 +162,8 @@ def predict_home_value():
         return jsonify({"predicted_price": float(predicted_price)}), 200
         
     except Exception as e:
-        app.logger.error(f"Error making prediction: {e}")
+        logger.error(f"Error making prediction: {e}")
+        logger.error(traceback.format_exc())
         return jsonify({"error": f"Error making prediction: {str(e)}"}), 500
 
 def check_environment():
@@ -198,6 +209,13 @@ def main():
     
     # Start the Flask app
     app.run(host=args.host, port=args.port, debug=False)
+
+# Set up error handling
+@app.errorhandler(Exception)
+def handle_exception(e):
+    logger.error(f"Unhandled exception: {str(e)}")
+    logger.error(traceback.format_exc())
+    return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 if __name__ == '__main__':
     main()
