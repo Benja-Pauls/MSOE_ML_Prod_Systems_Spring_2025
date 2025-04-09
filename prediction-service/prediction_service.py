@@ -189,8 +189,8 @@ def predict_home_value():
             'zipcode': validated_data['zipcode'],
             'lat': validated_data['latitude'],
             'long': validated_data['longitude'],
-            'sqft_living15': int(validated_data.get('sqft_living15', validated_data['sqft_living'])),
-            'sqft_lot15': int(validated_data.get('sqft_lot15', validated_data['sqft_lot'])),
+            'sqft_living15': int(validated_data.get('sqft_living15') or validated_data['sqft_living']),
+            'sqft_lot15': int(validated_data.get('sqft_lot15') or validated_data['sqft_lot']),
         }
         
         # Add enrichment data
