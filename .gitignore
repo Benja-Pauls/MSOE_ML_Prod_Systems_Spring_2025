@@ -1,3 +1,37 @@
 .venv/
 **/model.pkl
 __pycache__/
+
+# Ignore large data files
+*.csv
+
+# Ignore alternative model files
+**/patched_model.pkl
+**/simple_model.pkl
+
+# Ignore temporary script files
+**/patch_*.py
+**/final_service.py
+**/simple.py
+**/simple_prediction.py
+**/fix_model.py
+**/create_model_from_csv.py
+**/docker_create_model.py
+
+# Ignore alternative Dockerfiles
+**/Dockerfile.*
+
+# Python cache files
+**/__pycache__/
+**/*.py[cod]
+*$py.class
+
+# Keep these files
+!**/prediction_service.py
+!**/test_prediction_service.py
+!**/Dockerfile
+!**/README.md
+
+# pkl
+*.pkl
+**/model.pkl
