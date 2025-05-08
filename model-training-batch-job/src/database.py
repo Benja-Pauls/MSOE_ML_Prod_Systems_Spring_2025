@@ -72,7 +72,7 @@ def get_training_data(conn, limit=None):
             date, price, bedrooms, bathrooms, sqft_living, sqft_lot, 
             floors, waterfront, view, condition, grade, sqft_above, 
             sqft_basement, yr_built, yr_renovated, zipcode, lat, long, 
-            sqft_living15, population, high_schools, middle_schools, 
+            sqft_living15, sqft_lot15, population, high_schools, middle_schools, 
             primary_schools, other_schools, unknown_schools, total_schools
         FROM 
             cleaned_home_sale_events
